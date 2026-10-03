@@ -1,0 +1,117 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>mask preview harness</title>
+    <style>
+      body { background:#0a0a0e; color:#ccc; font:12px monospace; margin:0; padding:12px; }
+      #stageWrap { width: 760px; height: 620px; position: relative; }
+      .meta { margin-top:8px; white-space:pre-wrap; }
+      .thumbs { display:flex; gap:10px; margin-top:10px; align-items:flex-start; }
+      .thumbs canvas, .thumbs img { border:1px solid #333; }
+      #atlas { width:220px; height:220px; }
+    </style>
+  </head>
+  <body>
+    <div id="stageWrap"><canvas id="stage"></canvas></div>
+    <div class="thumbs">
+      <div><div>source</div><img id="src" style="max-width:220px" /></div>
+      <div><div>atlas</div><canvas id="atlas" width="1024" height="1024"></canvas></div>
+    </div>
+    <div class="meta" id="log"></div>
+    <script type="module">
+      import { getImageLandmarker } from '/src/lib/faceTracker.ts';
+      import { bakeAtlas, srcPointsFromLandmarks } from '/src/lib/maskBaker.ts';
+      import { FaceStage } from '/src/three/stage.ts';
+      import { EXPERIENCES } from '/src/three/experiences.ts';
+
+      const q = new URLSearchParams(location.search);
+      const logEl = document.getElementById('log');
+      const log = (m) => { logEl.textContent += m + '\n'; };
+      window.__result = { stage: 'start' };
+
+      async function main() {
+        const srcUrl = q.get('src');
+        const expId = q.get('exp') || 'archival';
+        const jawOpen = Number(q.get('jaw') || 0);
+        const clip = q.get('clip') !== '0';
+        const cover = q.get('cover') === '1';
+        const yawDeg = Number(q.get('yaw') || 0);
+        const pitchDeg = Number(q.get('pitch') || 0);
+
+        const img = document.getElementById('src');
+        img.src = srcUrl;
+        await img.decode();
+        const W = img.naturalWidth, H = img.naturalHeight;
+
+        const lm = await getImageLandmarker();
+        const det = lm.detect(img);
+        const face = det.faceLandmarks?.[0];
+        if (!face) { window.__result = { stage: 'no-face' }; log('NO FACE'); return; }
+
+        const baked = bakeAtlas(
+          { bitmap: img, width: W, height: H },
+          srcPointsFromLandmarks(face, W, H),
+          { size: 1024, clipToFace: clip, coverHead: cover, removeBackground: false, feather: 3 },
+        );
+        document.getElementById('atlas').getContext('2d').drawImage(baked.canvas, 0, 0);
+
+        // ---- render on the mesh ------------------------------------------
+        const stage = new FaceStage({ canvas: document.getElementById('stage') });
+        const exp = EXPERIENCES.find((e) => e.id === expId) || EXPERIENCES[0];
+        stage.setExperience(exp);
+        stage.setMaskTexture(baked.canvas);
+        stage.setBustVisible(q.get('bust') !== '0');
+        if (q.get('cranium') === '0') stage.setBustParts({ cranium: false });
+        if (q.get('neck') === '0') stage.setBustParts({ neck: false });
+        if (q.get('ped') === '0') stage.setBustParts({ pedestal: false });
+        stage.setMaskVisible(q.get('mask') !== '0');
+
+        // Synthesise a tracked frame from the detected landmarks: shift the
+        // yaw by rotating landmark x about the face centre so depth parallax
+        // can be inspected.
+        let lms = face.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+        if (yawDeg) {
+          const cx = 0.5, rad = (yawDeg * Math.PI) / 180;
+          lms = lms.map((p) => {
+            const dx = (p.x - cx) * Math.cos(rad) + p.z * Math.sin(rad) * 0.6;
+            return { x: cx + dx, y: p.y, z: p.z };
+          });
+        }
+        if (pitchDeg) {
+          const cy = 0.5, rad = (pitchDeg * Math.PI) / 180;
+          lms = lms.map((p) => ({ x: p.x, y: cy + (p.y - cy) * Math.cos(rad), z: p.z }));
+        }
+
+        const frame = {
+          landmarks: lms,
+          blendshapes: { jawOpen, eyeBlinkLeft: 0, eyeBlinkRight: 0 },
+          matrix: null,
+          timestamp: 0,
+        };
+
+        // Run several updates so the smoothing settles.
+        const aspect = W / H;
+        for (let i = 0; i < 40; i++) stage.update(frame, i * 16, aspect);
+        // ---- diagnostics -------------------------------------------------
+        const ac = baked.canvas.getContext('2d');
+        const ad = ac.getImageData(0, 0, 1024, 1024).data;
+        let opaque = 0, ink = 0;
+        for (let i = 0; i < ad.length; i += 4) {
+          if (ad[i + 3] > 8) opaque++;
+          if (ad[i + 3] > 8 && (ad[i] + ad[i+1] + ad[i+2]) > 30) ink++;
+        }
+        const dbg = stage.debugInfo();
+        window.__result = {
+          stage: 'ok', expId, jawOpen, clip, cover,
+          atlasOpaquePct: +(100 * opaque / (1024*1024)).toFixed(2),
+          atlasInkPct: +(100 * ink / (1024*1024)).toFixed(2),
+          mask: dbg,
+        };
+        log('atlas opaque ' + (100*opaque/(1024*1024)).toFixed(1) + '%  ink ' + (100*ink/(1024*1024)).toFixed(1) + '%');
+        log('mask bbox ' + JSON.stringify(dbg.min && dbg.min.map(v=>+v.toFixed(1))) + ' .. ' + JSON.stringify(dbg.max && dbg.max.map(v=>+v.toFixed(1))) + '  opacity ' + (dbg.opacity||0).toFixed(2) + '  tex ' + dbg.hasTexture);
+      }
+      main().catch((e) => { window.__result = { stage: 'error', message: String(e), stack: e.stack }; log('ERROR ' + e); });
+    </script>
+  </body>
+</html>

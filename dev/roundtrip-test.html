@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>roundtrip</title>
+  <style>body{background:#111;color:#ddd;font:12px monospace;padding:12px}canvas,img{border:1px solid #444}</style>
+  </head>
+  <body>
+    <div id="log"></div>
+    <div style="display:flex;gap:12px;margin-top:10px">
+      <div><div>marker source</div><canvas id="markers"></canvas></div>
+      <div><div>baked</div><canvas id="atlas" width="1024" height="1024" style="width:420px;height:420px"></canvas></div>
+    </div>
+    <script type="module">
+      import { getImageLandmarker } from '/src/lib/faceTracker.ts';
+      import { bakeAtlas, srcPointsFromLandmarks } from '/src/lib/maskBaker.ts';
+      import { CANONICAL_UVS, uvToAtlas } from '/src/lib/canonicalFace.ts';
+
+      const q = new URLSearchParams(location.search);
+      const log = (m) => { document.getElementById('log').textContent += m + '\n'; };
+      window.__result = { stage: 'start' };
+
+      const enc = (i) => [i & 255, (i >> 8) & 255, 200];
+      const SIZE = 1024;
+
+      async function main() {
+        const img = new Image();
+        img.src = q.get('src');
+        await img.decode();
+        const W = img.naturalWidth, H = img.naturalHeight;
+
+        const lm = await getImageLandmarker();
+        const face = lm.detect(img).faceLandmarks?.[0];
+        if (!face) { window.__result = { stage: 'no-face' }; return; }
+
+        // --- synthetic source: one uniquely coloured dot per landmark --------
+        const mc = document.getElementById('markers');
+        mc.width = W; mc.height = H;
+        mc.style.width = Math.min(420, W) + 'px';
+        const g = mc.getContext('2d');
+        g.fillStyle = '#000';
+        g.fillRect(0, 0, W, H);
+        const r = Number(q.get('r') || 2);
+        for (let i = 0; i < 468; i++) {
+          const [cr, cg, cb] = enc(i);
+          g.fillStyle = `rgb(${cr},${cg},${cb})`;
+          g.beginPath();
+          g.arc(face[i].x * W, face[i].y * H, r, 0, Math.PI * 2);
+          g.fill();
+        }
+
+        // --- bake and read back each vertex's colour ------------------------
+        const baked = bakeAtlas(
+          { bitmap: mc, width: W, height: H },
+          srcPointsFromLandmarks(face, W, H),
+          { size: SIZE, clipToFace: false, coverHead: false, removeBackground: false, feather: 0 },
+        );
+        window.__landmarks = face.map(p => [p.x, p.y]);
+        document.getElementById('atlas').getContext('2d').drawImage(baked.canvas, 0, 0);
+        const actx = baked.canvas.getContext('2d');
+        const px = actx.getImageData(0, 0, SIZE, SIZE).data;
+
+        let hit = 0, miss = 0, empty = 0;
+        const hitList = [], emptyList = [], wrongList = [];
+        for (let i = 0; i < 468; i++) {
+          const [x, y] = uvToAtlas(CANONICAL_UVS, i, SIZE);
+          const xi = Math.min(SIZE - 1, Math.max(0, Math.round(x)));
+          const yi = Math.min(SIZE - 1, Math.max(0, Math.round(y)));
+          const o = (yi * SIZE + xi) * 4;
+          const [er, eg] = enc(i);
+          const uv = CANONICAL_UVS[i * 2].toFixed(3) + ',' + CANONICAL_UVS[i * 2 + 1].toFixed(3);
+          if (px[o + 3] < 10) { empty++; if (emptyList.length < 10) emptyList.push('v' + i + ' uv ' + uv); continue; }
+          if (Math.abs(px[o] - er) < 12 && Math.abs(px[o + 1] - eg) < 12) { hit++; if (hitList.length < 10) hitList.push('v' + i + ' uv ' + uv); }
+          else { miss++; if (wrongList.length < 10) wrongList.push('v' + i + ' uv ' + uv + ' got rgb(' + px[o] + ',' + px[o+1] + ')'); }
+        }
+        window.__result = { stage: 'ok', hit, miss, empty, hitList, emptyList, wrongList };
+        log(`vertices hitting own marker: ${hit}/468  wrong: ${miss}  transparent: ${empty}`);
+        log('--- hitting (uv) ---'); hitList.forEach(e=>log('  '+e));
+        log('--- transparent (uv) ---'); emptyList.forEach(e=>log('  '+e));
+        log('--- wrong (uv) ---'); wrongList.forEach(e=>log('  '+e));
+      }
+      main().catch((e) => { window.__result = { stage: 'error', message: String(e) }; log('ERR ' + e); });
+    </script>
+  </body>
+</html>

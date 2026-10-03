@@ -1,0 +1,22 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.vite
+
+# Vendored at install time by `npm run vendor` (copied out of node_modules).
+# Reproducible, so not tracked — run `npm install` and it regenerates.
+public/mediapipe/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript incremental build info
+*.tsbuildinfo

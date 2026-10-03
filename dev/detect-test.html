@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>detect + bake harness</title>
+    <style>
+      body { background:#111; color:#ddd; font: 13px monospace; margin:0; padding:16px; }
+      img, canvas { border:1px solid #444; max-width:46vw; image-rendering:auto; }
+      .row { display:flex; gap:16px; flex-wrap:wrap; }
+      #log { white-space:pre-wrap; margin-top:12px; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <div><div>source</div><img id="src" /></div>
+      <div><div>baked atlas</div><canvas id="atlas" width="1024" height="1024" style="width:400px;height:400px"></canvas></div>
+    </div>
+    <div id="log">booting…</div>
+    <script type="module">
+      import { getImageLandmarker } from '/src/lib/faceTracker.ts';
+      import { bakeAtlas, srcPointsFromLandmarks } from '/src/lib/maskBaker.ts';
+
+      const params = new URLSearchParams(location.search);
+      const url = params.get('src');
+      const log = (m) => { const el = document.getElementById('log'); el.textContent += '\n' + m; };
+
+      window.__result = { stage: 'start' };
+
+      async function main() {
+        const img = document.getElementById('src');
+        img.src = url;
+        await img.decode();
+        const natural = { w: img.naturalWidth, h: img.naturalHeight };
+        log('image ' + natural.w + 'x' + natural.h);
+
+        const lm = await getImageLandmarker();
+        log('landmarker ready');
+
+        const t0 = performance.now();
+        const res = lm.detect(img);
+        const t1 = performance.now();
+        const faces = res.faceLandmarks ?? [];
+        log('detect: ' + faces.length + ' face(s) in ' + (t1 - t0).toFixed(0) + 'ms');
+
+        if (faces.length && faces[0].length >= 468) {
+          const f = faces[0];
+          const xs = f.map(p => p.x), ys = f.map(p => p.y);
+          const box = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+          log('face box (norm): x ' + box.x0.toFixed(3) + '..' + box.x1.toFixed(3) +
+              '  y ' + box.y0.toFixed(3) + '..' + box.y1.toFixed(3));
+
+          const t2 = performance.now();
+          const baked = bakeAtlas(
+            { bitmap: img, width: natural.w, height: natural.h },
+            srcPointsFromLandmarks(f, natural.w, natural.h),
+            { size: 1024, clipToFace: false, coverHead: false, removeBackground: false },
+          );
+          const t3 = performance.now();
+          const ctx = document.getElementById('atlas').getContext('2d');
+          ctx.clearRect(0, 0, 1024, 1024);
+          ctx.drawImage(baked.canvas, 0, 0);
+          log('bake: ' + (t3 - t2).toFixed(0) + 'ms');
+
+          // how much of the atlas has content?
+          const d = ctx.getImageData(0, 0, 1024, 1024).data;
+          let opaque = 0;
+          for (let i = 3; i < d.length; i += 4) if (d[i] > 8) opaque++;
+          const coverage = opaque / (1024 * 1024);
+          log('atlas coverage: ' + (coverage * 100).toFixed(1) + '%');
+
+          window.__result = { stage: 'ok', faces: faces.length, box, coverage,
+                              detectMs: Math.round(t1 - t0), bakeMs: Math.round(t3 - t2) };
+        } else {
+          window.__result = { stage: 'no-face', faces: faces.length };
+          log('NO FACE DETECTED');
+        }
+      }
+      main().catch(e => { window.__result = { stage: 'error', message: String(e) }; log('ERROR ' + e); });
+    </script>
+  </body>
+</html>
