@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "vendor": "node scripts/vendor-assets.mjs",
+    "postinstall": "node scripts/vendor-assets.mjs",
     "predev": "npm run vendor",
     "dev": "vite",
     "prebuild": "npm run vendor",
