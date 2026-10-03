@@ -2,6 +2,8 @@
 
 Wear any mask. Keep your face.
 
+A website. No install, no account, no backend — open the page and it runs.
+
 Upload a picture of a mask and it becomes a mask you can wear on camera — fitted
 to real 3D face geometry, moving with your expressions. The camera feed is used
 only to work out where your face is: it is never drawn on screen, never
@@ -41,11 +43,11 @@ Nine treatments, all applied to whatever you uploaded, all expression-aware:
 | **X-Ray** | Structure, not surface |
 
 Privacy is a feature, not a disclaimer: **Tracking** tab shows the live numbers
-the app derives from the camera, so you can see that only geometry leaves it.
+the site derives from the camera, so you can see that only geometry leaves it.
 
 ---
 
-## Running it
+## Running it locally
 
 ```bash
 npm install
@@ -53,23 +55,40 @@ npm run dev      # http://localhost:5173
 ```
 
 `npm install` is followed automatically by `npm run vendor`, which copies the
-face-tracking runtime out of `node_modules` and into `public/` so the app is
-fully self-hosted and works offline.
+face-tracking runtime out of `node_modules` and into `public/`, so the site is
+fully self-hosted.
 
 ```bash
-npm run build     # production build into dist/
-npm run preview   # serve the production build
+npm run build     # static site into dist/
+npm run preview   # serve the build locally
 npm run typecheck
 ```
 
+## Hosting it
+
+`npm run build` produces a plain static site in `dist/` — no server code, no
+environment variables, nothing to configure. Upload the folder to any static
+host.
+
+Asset URLs are relative (`base: './'` in `vite.config.ts`), so the same build
+works at a domain root **or** in a subdirectory without rebuilding. Verified by
+serving the build from a nested path and confirming the model, WebAssembly
+runtime and all script assets resolve:
+
+```
+/deep/nested/site/                              200
+/deep/nested/site/models/face_landmarker.task   200
+/deep/nested/site/mediapipe/vision_wasm_internal.wasm  200
+```
+
+Two things to keep in mind:
+
+- **Serve over HTTPS.** Browsers only allow camera access on secure origins
+  (`localhost` counts).
+- **Camera in an iframe.** A page embedding the site must grant camera access,
+  or the browser will block it regardless of what the visitor allows.
+
 ### Camera permissions
-
-Browsers block camera access inside cross-origin iframes unless the embedding
-page allows it. If you are viewing this in an embedded preview and the camera is
-refused, the app says so and offers an **Open in new tab** button — camera
-access works normally in a top-level tab.
-
----
 
 ## How it works
 
@@ -151,7 +170,7 @@ exactly 16:9. Everything works in image-height units now.
 
 `vendor/face_landmarker.task` (3.6 MB) is MediaPipe's FaceLandmarker bundle:
 the face detector, the 468-point landmark model and the blendshape model. It is
-committed so the app never depends on a CDN at runtime.
+committed so the site never depends on a CDN at runtime.
 
 The 11 MB SIMD WebAssembly runtime is copied from `@mediapipe/tasks-vision` at
 install time and is gitignored, because it is reproducible.

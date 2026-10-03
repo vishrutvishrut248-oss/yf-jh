@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  // Relative asset URLs, so the built site runs from any path — a domain root
+  // or a subdirectory — without rebuilding.
+  base: './',
   plugins: [react()],
   server: {
     host: '0.0.0.0',

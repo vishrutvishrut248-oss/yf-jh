@@ -24,8 +24,8 @@ function describeError(err: unknown): { message: string; hint: string } {
 
   if (/permissions policy|disallowed by permissions policy/i.test(raw)) {
     return {
-      message: 'Camera blocked by the page embedding this app.',
-      hint: 'Embedded previews often deny camera access. Open this app in its own browser tab and try again — the button below does that.',
+      message: 'Camera blocked by the page embedding this site.',
+      hint: 'Embedded previews often deny camera access. Open this site in its own browser tab and try again — the button below does that.',
     };
   }
   switch (name) {
@@ -130,7 +130,7 @@ export function useCamera() {
   return { videoRef, state, facing, start, stop, switchCamera };
 }
 
-/** Opens the current app in a new top-level tab, escaping an iframe's permission policy. */
+/** Opens this site in a new top-level tab, escaping an iframe's permission policy. */
 export function openInNewTab() {
   window.open(window.location.href, '_blank', 'noopener');
 }

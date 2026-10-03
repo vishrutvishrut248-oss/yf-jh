@@ -1,7 +1,7 @@
 /**
  * The stand-in head.
  *
- * The whole point of this app is that the user's own face never appears. So the
+ * The whole point of this site is that the user's own face never appears. So the
  * mask needs something to hang on: a neutral sculpted bust, generated
  * procedurally (no downloaded model), that rotates with the head pose and
  * catches light like plaster or graphite.

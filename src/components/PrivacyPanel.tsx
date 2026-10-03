@@ -25,7 +25,7 @@ export default function PrivacyPanel({
     <div className="privacy">
       <div className="privacy-card">
         <h3>
-          Your face is not in this app
+          Your face is not on this website
           <span className={`dot ${running ? 'on' : ''}`} />
         </h3>
         <ul>
@@ -39,8 +39,8 @@ export default function PrivacyPanel({
             your face is ever rendered.
           </li>
           <li>
-            The tracking model is served from this site, not a third party, so the app
-            works offline too.
+            The tracking model is served from this site itself, not a third party, so
+            it keeps working offline.
           </li>
         </ul>
         <p className="mono small">

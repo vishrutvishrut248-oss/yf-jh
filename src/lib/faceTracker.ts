@@ -2,7 +2,7 @@
  * FaceTracker — a thin, dependency-free wrapper around MediaPipe's
  * FaceLandmarker running entirely on-device.
  *
- * Privacy contract (this is the whole point of the app):
+ * Privacy contract (this is the whole point of the site):
  *   - the camera stream is consumed by this module and never attached to a
  *     visible element, never drawn to a canvas, never recorded, never sent
  *     anywhere. Only numeric landmark coordinates leave this class.
@@ -32,8 +32,14 @@ export type TrackerStatus =
   | { state: 'ready' }
   | { state: 'error'; message: string; hint?: string };
 
-const MODEL_URL = '/models/face_landmarker.task';
-const WASM_ROOT = '/mediapipe';
+/**
+ * Asset locations, resolved against the deployment base rather than the domain
+ * root, so the site works when hosted at a subpath (GitHub Pages project site,
+ * a folder on a shared host) as well as at a domain root.
+ */
+const BASE = import.meta.env.BASE_URL || '/';
+const WASM_ROOT = `${BASE}mediapipe`;
+const MODEL_URL = `${BASE}models/face_landmarker.task`;
 
 /** Where to look for the model, in order. Local first so we never depend on a CDN. */
 const MODEL_CANDIDATES = [
